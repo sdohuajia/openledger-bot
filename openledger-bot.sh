@@ -1,9 +1,19 @@
 #!/bin/bash
 
+# 脚本保存路径
+SCRIPT_PATH="$HOME/openledger-bot.sh"
+
+# 检查是否以 root 用户运行脚本
+if [ "$(id -u)" != "0" ]; then
+    echo "此脚本需要以 root 用户权限运行。"
+    echo "请尝试使用 'sudo -i' 命令切换到 root 用户，然后再次运行此脚本。"
+    exit 1
+fi
+
 # 安装和配置 openledger-bot 函数
 function setup_openledger() {
     # 检查 openledger 目录是否存在，如果存在则删除
-    if [ -d "openledger" ]; then
+    if [ -d "openledger-bot" ]; then
         echo "检测到 openledger 目录已存在，正在删除..."
         rm -rf openledger-bot
         echo "openledger-bot 目录已删除。"
