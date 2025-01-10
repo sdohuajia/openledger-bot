@@ -82,6 +82,7 @@ function start_screen_session() {
     screen -dmS openledger bash -c 'cd openledger-bot && node index.js'
     echo "请使用 'screen -r openledger' 连接到进程。"
     echo "按任意键返回主菜单..."
+    # 等待任意键输入后才返回主菜单
     read -n 1 -s -r
 }
 
