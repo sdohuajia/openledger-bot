@@ -10,6 +10,28 @@ if [ "$(id -u)" != "0" ]; then
     exit 1
 fi
 
+# 安装 Node.js 和 npm
+function install_nodejs_npm() {
+    echo "正在检查 Node.js 和 npm 是否已安装..."
+
+    # 检查是否安装了 Node.js
+    if ! command -v node &> /dev/null; then
+        echo "未找到 Node.js，正在安装..."
+        apt update || { echo "更新包列表失败"; exit 1; }
+        apt install -y nodejs || { echo "安装 Node.js 失败"; exit 1; }
+    else
+        echo "Node.js 已安装，版本为: $(node -v)"
+    fi
+
+    # 检查是否安装了 npm
+    if ! command -v npm &> /dev/null; then
+        echo "未找到 npm，正在安装..."
+        apt install -y npm || { echo "安装 npm 失败"; exit 1; }
+    else
+        echo "npm 已安装，版本为: $(npm -v)"
+    fi
+}
+
 # 安装必要的软件包
 function start_openledger_bot() {
     # 检查openledger-bot目录是否已存在
