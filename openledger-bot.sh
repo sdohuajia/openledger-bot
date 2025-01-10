@@ -1,158 +1,107 @@
 #!/bin/bash
 
-# 检查是否以 root 用户运行脚本
-if [ "$(id -u)" != "0" ]; then
-    echo "此脚本需要以 root 用户权限运行。"
-    echo "请尝试使用 'sudo -i' 命令切换到 root 用户，然后再次运行此脚本。"
-    exit 1
-fi
-
-# 安装 Node.js 和 npm
-function install_nodejs_npm() {
-    echo "正在检查并安装必要的组件..."
-    
-    # 更新包列表
-    apt update || { echo "更新包列表失败"; exit 1; }
-    
-    # 安装基础依赖
-    apt install -y curl wget git screen build-essential || {
-        echo "安装基础依赖失败";
-        exit 1;
-    }
-
-    # 检查并安装 Node.js
-    if ! command -v node &> /dev/null; then
-        echo "未找到 Node.js，正在安装..."
-        # 添加 NodeSource 仓库以获取最新的 Node.js
-        curl -fsSL https://deb.nodesource.com/setup_18.x | bash - || {
-            echo "添加 Node.js 仓库失败";
-            exit 1;
-        }
-        apt install -y nodejs || { echo "安装 Node.js 失败"; exit 1; }
-    else
-        echo "Node.js 已安装，版本为: $(node -v)"
-    fi
-
-    # 检查并安装 npm
-    if ! command -v npm &> /dev/null; then
-        echo "未找到 npm，正在安装..."
-        apt install -y npm || { echo "安装 npm 失败"; exit 1; }
-    else
-        echo "npm 已安装，版本为: $(npm -v)"
-    fi
-
-    # 检查并安装 screen
-    if ! command -v screen &> /dev/null; then
-        echo "未找到 screen，正在安装..."
-        apt install -y screen || { echo "安装 screen 失败"; exit 1; }
-    else
-        echo "screen 已安装"
-    fi
-
-    # 检查并安装 git
-    if ! command -v git &> /dev/null; then
-        echo "未找到 git，正在安装..."
-        apt install -y git || { echo "安装 git 失败"; exit 1; }
-    else
-        echo "git 已安装"
-    fi
-}
-
-# 设置账户信息
-function setup_account() {
-    echo "请输入 token1:"
-    read -r token1
-    echo "请输入 workerID1:"
-    read -r workerID1
-    echo "请输入 id1:"
-    read -r id1
-    echo "请输入 ownerAddress1:"
-    read -r ownerAddress1
-
-    # 合并这些信息
-    account="$token1:$workerID1:$id1:$ownerAddress1"
-
-    # 保存到 account.txt
-    echo "$account" > account.txt
-    echo "账户信息已保存到 account.txt"
-}
-
-# 设置代理信息
-function setup_proxy() {
-    echo "请输入代理 IP："
-    read -r proxy
-    echo "$proxy" > proxy.txt
-    echo "代理 IP 已保存到 proxy.txt"
-}
-
-# 启动 bot
-function start_bot() {
-    # 检查openledger-bot目录是否已存在
-    if [ -d "openledger-bot" ]; then
-        echo "检测到已存在openledger-bot目录,正在删除..."
+# 安装和配置 openledger-bot 函数
+function setup_openledger() {
+    # 检查 openledger 目录是否存在，如果存在则删除
+    if [ -d "openledger" ]; then
+        echo "检测到 openledger 目录已存在，正在删除..."
         rm -rf openledger-bot
+        echo "openledger-bot 目录已删除。"
     fi
 
-    echo "正在安装全局 npm 包..."
-    npm install -g node-fetch@2 global-agent https-proxy-agent socks-proxy-agent pm2 || {
-        echo "安装全局 npm 包失败";
-        exit 1;
-    }
+    echo "正在从 GitHub 克隆 openledger 仓库..."
+    git clone https://github.com/sdohuajia/openledger-bot.git
+    if [ ! -d "openledger-bot" ]; then
+        echo "克隆失败，请检查网络连接或仓库地址。"
+        exit 1
+    fi
 
-    echo "正在克隆 openledger 仓库..."
-    git clone https://github.com/sdohuajia/openledger-bot.git || {
-        echo "克隆仓库失败";
-        exit 1;
-    }
+    cd "openledger-bot" || { echo "无法进入 openledger-bot 目录"; exit 1; }
 
-    echo "进入项目目录并安装依赖..."
-    cd openledger-bot || { echo "进入目录失败"; exit 1; }
-    npm install || { echo "安装项目依赖失败"; exit 1; }
+    # 安装 Node.js 和 npm（如果尚未安装）
+    if ! command -v npm &> /dev/null; then
+        echo "正在安装 Node.js 和 npm..."
+        curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+        sudo apt-get install -y nodejs
+    fi
 
-    # 获取用户输入
-    setup_account
-    setup_proxy
+    # 安装 npm 依赖项
+    echo "正在安装 npm 依赖项..."
+    npm install || { echo "npm 依赖项安装失败"; exit 1; }
 
-    # 启动进程
-    echo "正在启动 Openledger Bot 进程..."
-    screen -dmS openledger bash -c 'cd openledger-bot && node index.js'
-    echo "Bot 已在 screen 会话中启动"
-    echo "使用 'screen -r openledger' 命令可以查看运行状态"
-    echo "使用 'Ctrl + A + D' 可以退出 screen 会话"
-    echo "使用 'screen -X -S openledger quit' 可以终止 bot 运行"
+    # 获取 token 和其他信息
+    read -p "请输入token: " token
+    read -s -p "请输入workerID: " workerID
+    echo  # 换行
+    read -s -p "请输入id: " id
+    echo  # 换行
+    read -s -p "请输入ownerAddress: " ownerAddress
+    echo  # 换行
+
+    # 将信息保存到 account.txt 文件
+    echo "${token}:${workerID}:${id}:${ownerAddress}" >> account.txt
+
+    echo "信息已保存到 account.txt"
+
+    # 配置代理信息
+    read -p "请输入您的代理信息，格式为 http://user:pass@ip:port (可以为空): " proxy_info
+    proxy_file="/root/openledger-bot/proxy.txt"
+
+    # 如果代理信息不为空，则写入文件
+    if [[ -n "$proxy_info" ]]; then
+        echo "$proxy_info" > "$proxy_file"
+        echo "代理信息已添加到 $proxy_file."
+    else
+        echo "没有输入代理信息，文件保持不变."
+    fi
+
+    # 检查是否安装了 screen，如果没有安装，则安装它
+    if ! command -v screen &> /dev/null; then
+        echo "检测到未安装 screen，正在安装..."
+        sudo apt-get install -y screen || { echo "screen 安装失败"; exit 1; }
+    fi
+
+    echo "正在使用 screen 启动应用..."
+
+    # 创建新的 screen 会话，名称为 openledger
+    screen -dmS openledger bash -c "cd openledger-bot && node index.js"
+
+    # 提示用户如何查看日志
+    echo "使用 'screen -r openledger' 命令来查看日志。"
+    echo "要退出 screen 会话，请按 Ctrl+A 然后按 D。"
+
+    # 提示用户按任意键返回主菜单
+    read -n 1 -s -r -p "按任意键返回主菜单..."
 }
 
-# 主菜单
+# 主菜单函数
 function main_menu() {
-    clear
-    echo "================================================================"
-    echo "                    Openledger Bot 安装脚本"
-    echo "================================================================"
-    echo "脚本由大赌社区编写，推特 @ferdie_jhovie"
-    echo "电报群：t.me/Sdohua"
-    echo "================================================================"
-    echo "1. 安装并启动 bot"
-    echo "2. 退出脚本"
-    echo "================================================================"
-    
-    read -p "请输入选项 [1-2]: " choice
+    while true; do
+        clear
+        echo "脚本由大赌社区哈哈哈哈编写，推特 @ferdie_jhovie，免费开源，请勿相信收费"
+        echo "如有问题，可联系推特，仅此只有一个号"
+        echo "================================================================"
+        echo "退出脚本，请按键盘 ctrl + C 退出即可"
+        echo "请选择要执行的操作:"
+        echo "1. 安装部署openledger "
+        echo "2. 退出"
 
-    case $choice in
-        1)
-            install_nodejs_npm
-            start_bot
-            ;;
-        2)
-            echo "退出脚本"
-            exit 0
-            ;;
-        *)
-            echo "无效的选项，请重新选择"
-            sleep 2
-            main_menu
-            ;;
-    esac
+        read -p "请输入您的选择 (1,2): " choice
+        case $choice in
+            1)
+                setup_openledger  # 调用安装和配置函数
+                ;;   
+            2)
+                echo "退出脚本..."
+                exit 0
+                ;;
+            *)
+                echo "无效的选择，请重试."
+                read -n 1 -s -r -p "按任意键继续..."
+                ;;
+        esac
+    done
 }
 
-# 运行主菜单
+# 进入主菜单
 main_menu
