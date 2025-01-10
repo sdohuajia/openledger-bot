@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 脚本保存路径
-SCRIPT_PATH="$HOME/openloop.sh"
+SCRIPT_PATH="$HOME/openledger-bot.sh"
 
 # 检查是否以 root 用户运行脚本
 if [ "$(id -u)" != "0" ]; then
@@ -49,7 +49,7 @@ function start_openledger_bot() {
         exit 1; 
     }
 
-    echo "正在克隆 Openloop 仓库..."
+    echo "正在克隆 openledger 仓库..."
     git clone https://github.com/sdohuajia/openledger-bot.git || {
         echo "克隆仓库失败";
         exit 1;
@@ -66,8 +66,19 @@ function start_openledger_bot() {
 
 # 让用户输入并保存到 account.txt
 function setup_account() {
-    echo "请输入账户信息（格式token1:workerID1:id1:ownerAddress1）："
-    read -r account
+    echo "请输入 token1:"
+    read -r token1
+    echo "请输入 workerID1:"
+    read -r workerID1
+    echo "请输入 id1:"
+    read -r id1
+    echo "请输入 ownerAddress1:"
+    read -r ownerAddress1
+
+    # 合并这些信息
+    account="$token1:$workerID1:$id1:$ownerAddress1"
+
+    # 保存到 account.txt
     echo "$account" >> account.txt
     echo "账户信息已保存到 account.txt"
 }
