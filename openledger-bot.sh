@@ -31,11 +31,11 @@ function setup_openledger() {
 
     # 获取 token 和其他信息
     read -p "请输入token: " token
-    read -s -p "请输入workerID: " workerID
+    read -p "请输入workerID: " workerID
     echo  # 换行
-    read -s -p "请输入id: " id
+    read -p "请输入id: " id
     echo  # 换行
-    read -s -p "请输入ownerAddress: " ownerAddress
+    read -p "请输入ownerAddress: " ownerAddress
     echo  # 换行
 
     # 将信息保存到 account.txt 文件
@@ -66,6 +66,13 @@ function setup_openledger() {
     # 创建新的 screen 会话，名称为 openledger
     screen -dmS openledger bash -c "cd openledger-bot && node index.js"
 
+    # 检查 screen 会话是否成功创建
+    if screen -ls | grep -q "openledger"; then
+        echo "screen 会话 openledger 已成功启动。"
+    else
+        echo "无法启动 screen 会话 openledger，请检查错误。"
+    fi
+    
     # 提示用户如何查看日志
     echo "使用 'screen -r openledger' 命令来查看日志。"
     echo "要退出 screen 会话，请按 Ctrl+A 然后按 D。"
