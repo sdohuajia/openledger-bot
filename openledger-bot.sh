@@ -48,7 +48,7 @@ function start_openledger_bot() {
         echo "安装npm包失败"; 
         exit 1; 
     }
- 
+
     echo "正在克隆 Openloop 仓库..."
     git clone https://github.com/sdohuajia/openledger-bot.git || {
         echo "克隆仓库失败";
@@ -58,6 +58,10 @@ function start_openledger_bot() {
     echo "进入项目目录并安装依赖..."
     cd openledger-bot || { echo "进入目录失败"; exit 1; }
     npm install || { echo "安装项目依赖失败"; exit 1; }
+
+    # 依赖安装完成后返回主菜单
+    echo "依赖安装完成，返回主菜单..."
+    read -n 1 -s -r
 }
 
 # 让用户输入并保存到 account.txt
@@ -89,7 +93,7 @@ function start_screen_session() {
 # 主菜单函数
 function main_menu() {
     # 首次运行检查依赖
-    check_dependencies
+    install_nodejs_npm
 
     while true; do
         clear
