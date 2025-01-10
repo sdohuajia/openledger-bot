@@ -105,6 +105,8 @@ function start_bot() {
 
     # 启动进程
     echo "正在启动 Openledger Bot 进程..."
+    # 创建并直接进入 screen 会话
+    screen -S openledger
     screen -dmS openledger bash -c 'cd openledger-bot && node index.js'
     echo "Bot 已在 screen 会话中启动"
     echo "使用 'screen -r openledger' 命令可以查看运行状态"
