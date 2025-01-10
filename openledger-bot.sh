@@ -40,7 +40,6 @@ function setup_openledger() {
 
     # 将信息保存到 account.txt 文件
     echo "${token}:${workerID}:${id}:${ownerAddress}" >> account.txt
-
     echo "信息已保存到 account.txt"
 
     # 配置代理信息
@@ -72,7 +71,7 @@ function setup_openledger() {
     else
         echo "无法启动 screen 会话 openledger，请检查错误。"
     fi
-    
+
     # 提示用户如何查看日志
     echo "使用 'screen -r openledger' 命令来查看日志。"
     echo "要退出 screen 会话，请按 Ctrl+A 然后按 D。"
