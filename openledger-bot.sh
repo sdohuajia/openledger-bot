@@ -66,7 +66,6 @@ function start_openledger_bot() {
 }
 
 # 让用户输入并保存到 account.txt
-function setup_account() {
     echo "请输入 token1:"
     read -r token1
     echo "请输入 workerID1:"
@@ -82,18 +81,14 @@ function setup_account() {
     # 保存到 account.txt
     echo "$account" >> account.txt
     echo "账户信息已保存到 account.txt"
-}
 
 # 让用户输入代理IP并保存到 proxy.txt
-function setup_proxy() {
     echo "请输入代理 IP："
     read -r proxy
     echo "$proxy" >> proxy.txt
     echo "代理 IP 已保存到 proxy.txt"
-}
 
-# 启动进程
-function start_screen_session() {
+    # 启动进程
     echo "正在启动 Openledger Bot 进程..."
     screen -dmS openledger bash -c 'cd openledger-bot && node index.js'
     echo "请使用 'screen -r openledger' 连接到进程。"
