@@ -59,9 +59,10 @@ function start_openledger_bot() {
     cd openledger-bot || { echo "进入目录失败"; exit 1; }
     npm install || { echo "安装项目依赖失败"; exit 1; }
 
-    # 依赖安装完成后返回主菜单
-    echo "依赖安装完成，返回主菜单..."
-    read -n 1 -s -r
+    # 依赖安装完成后继续让用户填写信息
+    echo "依赖安装完成，现在继续填写账户信息和代理 IP..."
+    setup_account
+    setup_proxy
 }
 
 # 让用户输入并保存到 account.txt
@@ -125,6 +126,7 @@ function main_menu() {
             1)
                 start_openledger_bot
                 ;;
+
             2)
                 echo "退出脚本。"
                 exit 0
