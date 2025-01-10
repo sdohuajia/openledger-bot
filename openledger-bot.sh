@@ -9,18 +9,31 @@ fi
 
 # 安装 Node.js 和 npm
 function install_nodejs_npm() {
-    echo "正在检查 Node.js 和 npm 是否已安装..."
+    echo "正在检查并安装必要的组件..."
+    
+    # 更新包列表
+    apt update || { echo "更新包列表失败"; exit 1; }
+    
+    # 安装基础依赖
+    apt install -y curl wget git screen build-essential || {
+        echo "安装基础依赖失败";
+        exit 1;
+    }
 
-    # 检查是否安装了 Node.js
+    # 检查并安装 Node.js
     if ! command -v node &> /dev/null; then
         echo "未找到 Node.js，正在安装..."
-        apt update || { echo "更新包列表失败"; exit 1; }
+        # 添加 NodeSource 仓库以获取最新的 Node.js
+        curl -fsSL https://deb.nodesource.com/setup_18.x | bash - || {
+            echo "添加 Node.js 仓库失败";
+            exit 1;
+        }
         apt install -y nodejs || { echo "安装 Node.js 失败"; exit 1; }
     else
         echo "Node.js 已安装，版本为: $(node -v)"
     fi
 
-    # 检查是否安装了 npm
+    # 检查并安装 npm
     if ! command -v npm &> /dev/null; then
         echo "未找到 npm，正在安装..."
         apt install -y npm || { echo "安装 npm 失败"; exit 1; }
@@ -28,7 +41,7 @@ function install_nodejs_npm() {
         echo "npm 已安装，版本为: $(npm -v)"
     fi
 
-    # 检查是否安装了 screen
+    # 检查并安装 screen
     if ! command -v screen &> /dev/null; then
         echo "未找到 screen，正在安装..."
         apt install -y screen || { echo "安装 screen 失败"; exit 1; }
@@ -36,7 +49,7 @@ function install_nodejs_npm() {
         echo "screen 已安装"
     fi
 
-    # 检查是否安装了 git
+    # 检查并安装 git
     if ! command -v git &> /dev/null; then
         echo "未找到 git，正在安装..."
         apt install -y git || { echo "安装 git 失败"; exit 1; }
@@ -80,13 +93,10 @@ function start_bot() {
         rm -rf openledger-bot
     fi
 
-    echo "正在更新系统包列表..."
-    apt update || { echo "更新包列表失败"; exit 1; }
-    
-    echo "正在安装必要的 npm 包..."
-    npm install -g node-fetch@2 global-agent https-proxy-agent socks-proxy-agent || { 
-        echo "安装npm包失败"; 
-        exit 1; 
+    echo "正在安装全局 npm 包..."
+    npm install -g node-fetch@2 global-agent https-proxy-agent socks-proxy-agent pm2 || {
+        echo "安装全局 npm 包失败";
+        exit 1;
     }
 
     echo "正在克隆 openledger 仓库..."
@@ -105,8 +115,6 @@ function start_bot() {
 
     # 启动进程
     echo "正在启动 Openledger Bot 进程..."
-    # 创建并直接进入 screen 会话
-    screen -S openledger
     screen -dmS openledger bash -c 'cd openledger-bot && node index.js'
     echo "Bot 已在 screen 会话中启动"
     echo "使用 'screen -r openledger' 命令可以查看运行状态"
