@@ -34,7 +34,7 @@ function displayHeader() {
   const width = process.stdout.columns;
   const headerLines = [
     "<|============================================|>",
-    " OpenLedger Bot 自动化节点交互",
+    " OpenLedger Bot 自动化交互脚本",
     "<|============================================|>"
   ];
   headerLines.forEach(line => {
@@ -49,7 +49,7 @@ try {
     .split(/\s+/)
     .filter(Boolean);
 } catch (err) {
-  console.error('读取 account.txt 时出错:', err.message);
+  console.error('读取 account.txt 文件时出错:', err.message);
   process.exit(1);
 }
 
@@ -60,7 +60,7 @@ try {
     .split(/\s+/)
     .filter(Boolean);
 } catch (error) {
-  console.error('读取 proxy.txt 时出错:', error.message);
+  console.error('读取 proxy.txt 文件时出错:', error.message);
 }
 
 if (proxies.length > 0 && proxies.length < wallets.length) {
@@ -78,7 +78,7 @@ async function askUseProxy() {
 
   return new Promise((resolve) => {
     function ask() {
-      rl.question('您是否想使用代理？ (y/n): ', (answer) => {
+      rl.question('是否使用代理？(y/n): ', (answer) => {
         if (answer.toLowerCase() === 'y') {
           resolve(true);
           rl.close();
@@ -86,7 +86,7 @@ async function askUseProxy() {
           resolve(false);
           rl.close();
         } else {
-          console.log('请回答 y 或 n。');
+          console.log('请输入 y 或 n 来回答。');
           ask();
         }
       });
@@ -107,7 +107,7 @@ async function generateTokenForAddress(address, agent) {
     );
     return result.data?.data?.token || null;
   } catch (error) {
-    console.error(`生成钱包 ${address} 的 token 时出错:`, error.message);
+    console.error(`为钱包 ${address} 生成 token 时出错:`, error.message);
     return null;
   }
 }
@@ -127,7 +127,7 @@ async function getOrCreateWalletData(address, agent) {
   if (!dataStore[address].token) {
     const token = await generateTokenForAddress(address, agent);
     if (!token) {
-      console.log('无法生成 token，将跳过此钱包。');
+      console.log('无法生成 token，暂时跳过此钱包。');
       return null;
     }
     dataStore[address].token = token;
@@ -155,13 +155,58 @@ async function getAccountID(token, address, index, useProxy, delay = 60000) {
       });
       const acctID = response.data.data.id;
       accountIDs[address] = acctID;
-      console.log(`\x1b[31m[${index + 1}]\x1b[0m 账号ID \x1b[31m${acctID}\x1b[0m, 总心跳数 0, 总积分 0, 代理: \x1b[31m${proxyText}\x1b[0m`);
+      console.log(`\x1b[33m[${index + 1}]\x1b[0m 账户 ID \x1b[36m${acctID}\x1b[0m，代理: \x1b[36m${proxyText}\x1b[0m`);
       return;
     } catch (error) {
-      console.error(`\x1b[31m[${index + 1}]\x1b[0m 获取钱包 ${address} 的账号ID时出错，第${attempt}次重试:`, error.message);
-      console.log(`\x1b[31m[${index + 1}]\x1b[0m 正在重试... ${delay / 1000}秒后继续`);
+      console.error(`\x1b[33m[${index + 1}]\x1b[0m 获取钱包 ${address} 的账户 ID 时出错，第 ${attempt} 次尝试:`, error.message);
+      console.log(`\x1b[33m[${index + 1}]\x1b[0m 正在 ${delay / 1000} 秒后重试...`);
       await new Promise(resolve => setTimeout(resolve, delay));
       attempt++;
+    }
+  }
+}
+
+async function getAccountDetails(token, address, index, useProxy, retries = 3, delay = 60000) {
+  const proxyUrl = proxies.length > 0 ? proxies[index % proxies.length] : '';
+  const agent = useProxy && proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
+  const proxyText = useProxy && proxyUrl ? proxyUrl : '无代理';
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const rewardRealtimeResponse = await axios.get('https://rewardstn.openledger.xyz/api/v1/reward_realtime', {
+        headers: { 'Authorization': `Bearer ${token}` },
+        httpsAgent: agent
+      });
+      const rewardHistoryResponse = await axios.get('https://rewardstn.openledger.xyz/api/v1/reward_history', {
+        headers: { 'Authorization': `Bearer ${token}` },
+        httpsAgent: agent
+      });
+      const rewardResponse = await axios.get('https://rewardstn.openledger.xyz/api/v1/reward', {
+        headers: { 'Authorization': `Bearer ${token}` },
+        httpsAgent: agent
+      });
+
+      const totalHeartbeats = parseInt(rewardRealtimeResponse.data.data[0]?.total_heartbeats || 0, 10);
+      const totalPointFromReward = parseFloat(rewardResponse.data.data?.totalPoint || 0);
+      const epochName = rewardResponse.data.data?.name || '';
+
+      const total = totalHeartbeats + totalPointFromReward;
+
+      console.log(
+        `\x1b[33m[${index + 1}]\x1b[0m 钱包 \x1b[36m${address}\x1b[0m, ` +
+        `账户 ID \x1b[36m${accountIDs[address]}\x1b[0m, 总心跳 \x1b[32m${totalHeartbeats}\x1b[0m, ` +
+        `总积分 \x1b[32m${total.toFixed(2)}\x1b[0m (\x1b[33m${epochName}\x1b[0m), ` +
+        `代理: \x1b[36m${proxyText}\x1b[0m`
+      );
+      return;
+    } catch (error) {
+      console.error(`获取钱包 ${address} 账户详情时出错，第 ${attempt} 次尝试:`, error.message);
+      if (attempt < retries) {
+        console.log(`正在 ${delay / 1000} 秒后重试...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        console.error('所有重试尝试都失败了。');
+      }
     }
   }
 }
@@ -186,19 +231,19 @@ async function checkAndClaimReward(token, address, index, useProxy, retries = 3,
 
         if (claimRewardResponse.data.status === 'SUCCESS') {
           console.log(
-            `\x1b[31m[${index + 1}]\x1b[0m 钱包 \x1b[31m${address}\x1b[0m, ` +
-            `账号ID \x1b[31m${accountIDs[address]}\x1b[0m \x1b[32m成功领取每日奖励！\x1b[0m`
+            `\x1b[33m[${index + 1}]\x1b[0m 钱包 \x1b[36m${address}\x1b[0m, ` +
+            `账户 ID \x1b[36m${accountIDs[address]}\x1b[0m \x1b[32m成功领取每日奖励！\x1b[0m`
           );
         }
       }
       return;
     } catch (error) {
-      console.error(`领取钱包 ${address} 奖励时出错，第${attempt}次重试:`, error.message);
+      console.error(`领取钱包 ${address} 奖励时出错，第 ${attempt} 次尝试:`, error.message);
       if (attempt < retries) {
-        console.log(`重试中... ${delay / 1000}秒后继续`);
+        console.log(`正在 ${delay / 1000} 秒后重试...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       } else {
-        console.error('所有重试都失败了。');
+        console.error('所有重试尝试都失败了。');
       }
     }
   }
@@ -219,7 +264,7 @@ async function checkAndClaimRewardsPeriodically(useProxy) {
       await checkAndClaimReward(token, address, idx, useProxy);
     });
     await Promise.all(promises);
-  }, 12 * 60 * 60 * 1000);
+  }, 12 * 60 * 60 * 1000);  // 每 12 小时执行一次
 }
 
 function connectWebSocket({ token, workerID, id, address }, index, useProxy) {
@@ -229,53 +274,88 @@ function connectWebSocket({ token, workerID, id, address }, index, useProxy) {
   const wsOptions = {
     agent,
     headers: {
-      'Accept-Encoding': 'gzip, deflate, br, identity',
-      'Authorization': `Bearer ${token}`,
-      'Connection': 'keep-alive',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-      'Content-Type': 'application/json',
-      'x-worker-id': workerID
+      'Accept-Encoding': 'gzip, deflate, br, zstd',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+      'Cache-Control': 'no-cache',
+      'Connection': 'Upgrade',
+      'Host': 'apitn.openledger.xyz',
+      'Origin': 'chrome-extension://ekbbplmjjgoobhdlffmgeokalelnmjjc',
+      'Pragma': 'no-cache',
+      'Sec-WebSocket-Extensions': 'permessage-deflate; client_max_window_bits',
+      'Sec-WebSocket-Key': '0iJKzoEtY2vsWuXjR8ZSng==',
+      'Sec-WebSocket-Version': '13',
+      'Upgrade': 'websocket',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
     }
   };
+  const proxyText = useProxy && proxyUrl ? proxyUrl : '无代理';
 
   const ws = new WebSocket(wsUrl, wsOptions);
+  let heartbeatInterval;
+
+  function sendHeartbeat() {
+    getOrAssignResources(address);
+    const assignedGPU = dataStore[address].gpu || '';
+    const assignedStorage = dataStore[address].storage || '';
+    const heartbeatMessage = {
+      message: {
+        Worker: {
+          Identity: workerID,
+          ownerAddress: address,
+          type: 'LWEXT',
+          Host: 'chrome-extension://ekbbplmjjgoobhdlffmgeokalelnmjjc'
+        },
+        Capacity: {
+          AvailableMemory: (Math.random() * 32).toFixed(2),
+          AvailableStorage: assignedStorage,
+          AvailableGPU: assignedGPU,
+          AvailableModels: []
+        }
+      },
+      msgType: 'HEARTBEAT'
+    };
+
+    ws.send(JSON.stringify(heartbeatMessage));
+  }
 
   ws.on('open', () => {
-    console.log(`\x1b[31m[${index + 1}]\x1b[0m WebSocket 已连接，钱包 \x1b[31m${address}\x1b[0m`);
-  });
+    console.log(`\x1b[33m[${index + 1}]\x1b[0m ` +
+      `连接 WebSocket 成功: 钱包 \x1b[36m${address}\x1b[0m，代理: \x1b[36m${proxyText}\x1b[0m`);
 
-  ws.on('message', (message) => {
-    const data = JSON.parse(message);
-    if (data.action === 'REGISTER') {
-      console.log(`注册成功: ${data.message}`);
-    }
-    console.log(`收到消息: \x1b[31m${JSON.stringify(data)}\x1b[0m`);
-  });
-
-  ws.on('error', (error) => {
-    console.error(`WebSocket 错误: ${error.message}`);
+    heartbeatInterval = setInterval(sendHeartbeat, 2500);
   });
 
   ws.on('close', () => {
-    console.log(`WebSocket 连接关闭: 钱包 \x1b[31m${address}\x1b[0m`);
+    console.log(`\x1b[33m[${index + 1}]\x1b[0m 连接已关闭，钱包 \x1b[36m${address}\x1b[0m`);
+    clearInterval(heartbeatInterval);
+  });
+
+  ws.on('error', (error) => {
+    console.error(`\x1b[33m[${index + 1}]\x1b[0m WebSocket 错误:`, error.message);
   });
 }
 
-(async function main() {
-  displayHeader();
-
+async function main() {
   const useProxy = await askUseProxy();
-
-  const promises = wallets.map(async (address, index) => {
-    getOrAssignResources(address);
-    const walletData = await getOrCreateWalletData(address, useProxy);
+  displayHeader();
+  
+  const walletPromises = wallets.map(async (address, index) => {
+    const agent = useProxy && proxies.length > 0 ? new HttpsProxyAgent(proxies[index % proxies.length]) : undefined;
+    const walletData = await getOrCreateWalletData(address, agent);
     if (!walletData) return;
 
     await getAccountID(walletData.token, address, index, useProxy);
-    connectWebSocket(walletData, index, useProxy);
+    await getAccountDetails(walletData.token, address, index, useProxy);
   });
 
-  await Promise.all(promises);
-
+  await Promise.all(walletPromises);
   await checkAndClaimRewardsPeriodically(useProxy);
-})();
+
+  wallets.forEach((address, index) => {
+    const { token, workerID, id } = dataStore[address] || {};
+    if (!token) return;
+    connectWebSocket({ token, workerID, id, address }, index, useProxy);
+  });
+}
+
+main();
