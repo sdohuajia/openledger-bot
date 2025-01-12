@@ -316,10 +316,7 @@ function connectWebSocket({ token, workerID, id, address }, index, useProxy) {
       workerType: 'LWEXT',
       workerID
     };
-    console.log(
-      `\x1b[33m[${index + 1}]\x1b[0m 账户ID \x1b[36m${accountIDs[address]}\x1b[0m: ` +
-      `正在为工作ID发送心跳: \x1b[33m${workerID}\x1b[0m, 代理: \x1b[36m${proxyText}\x1b[0m`
-    );
+    // Do not log heartbeat messages
     ws.send(JSON.stringify(heartbeatMessage));
   }
 
