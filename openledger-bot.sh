@@ -40,14 +40,10 @@ function setup_openledger() {
     npm install || { echo "npm 依赖项安装失败"; exit 1; }
 
     # 获取 token 和其他信息
-    read -p "请输入token: " token
-    read -p "请输入workerID: " workerID
-    read -p "请输入id: " id
-    read -p "请输入ownerAddress: " ownerAddress
-    echo  # 换行
+    read -p "请输入address: " address
 
     # 将信息保存到 account.txt 文件
-    echo "${token}:${workerID}:${id}:${ownerAddress}" >> account.txt
+    echo "${address}" >> account.txt
     echo "信息已保存到 account.txt"
 
     # 配置代理信息
