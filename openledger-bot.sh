@@ -40,7 +40,7 @@ function setup_openledger() {
     npm install || { echo "npm 依赖项安装失败"; exit 1; }
 
     # 获取 token 和其他信息
-    read -p "请输入address: " address
+    read -p "请输入地址address: " address
 
     # 将信息保存到 account.txt 文件
     echo "${address}" >> account.txt
