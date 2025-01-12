@@ -63,7 +63,7 @@ function setup_openledger() {
     sleep 1  # 等待1秒钟确保会话已启动
 
     # 进入目录并启动 Node.js
-    screen -S openledger -X stuff "cd /path/to/openledger-bot && node index.js\n" 
+    screen -S openledger -X stuff "cd /root/openledger-bot && node index.js\n" 
     echo "使用 'screen -r openledger' 命令来查看日志。"
     echo "要退出 screen 会话，请按 Ctrl+A+D。"
 
