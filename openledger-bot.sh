@@ -58,12 +58,14 @@ function setup_openledger() {
         echo "没有输入代理信息，文件保持不变."
     fi
 
-    echo "正在使用 tmux 启动 index.js..."
-    tmux new-session -d -s openledger  # 创建新的 tmux 会话，名称为 openledger
-    tmux send-keys -t openledger "cd openledger-bot" C-m  # 切换到 openledger 目录
-    tmux send-keys -t openledger "node index.js" C-m  # 启动 index.js
-    echo "使用 'tmux attach -t openledger' 命令来查看日志。"
-    echo "要退出 tmux 会话，请按 Ctrl+B 然后按 D。"
+    echo "正在使用 screen 启动 index.js..."
+    screen -S openledger -dm  # 创建新的 screen 会话，名称为 openledger
+    sleep 1  # 等待1秒钟确保会话已启动
+
+    # 进入目录并启动 Node.js
+    screen -S openledger -X stuff "cd /path/to/openledger-bot && node index.js\n" 
+    echo "使用 'screen -r openledger' 命令来查看日志。"
+    echo "要退出 screen 会话，请按 Ctrl+A+D。"
 
     # 提示用户按任意键返回主菜单
     read -n 1 -s -r -p "按任意键返回主菜单..."
