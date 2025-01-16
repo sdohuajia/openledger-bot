@@ -35,7 +35,6 @@ function displayHeader() {
   const headerLines = [
     "<|============================================|>",
     " OpenLedger Bot ",
-    " github.com/recitativonika ",
     "<|============================================|>"
   ];
   headerLines.forEach(line => {
