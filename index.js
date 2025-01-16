@@ -25,7 +25,7 @@ function getOrAssignResources(address) {
     try {
       fs.writeFileSync('data.json', JSON.stringify(dataStore, null, 2));
     } catch (error) {
-      console.error('写入 GPU/存储信息到 data.json 时出错:', error.message);
+      console.error('写入GPU/存储到 data.json 时出错:', error.message);
     }
   }
 }
@@ -34,7 +34,8 @@ function displayHeader() {
   const width = process.stdout.columns;
   const headerLines = [
     "<|============================================|>",
-    " OpenLedger 自动化节点机器人 ",
+    " OpenLedger Bot ",
+    " github.com/recitativonika ",
     "<|============================================|>"
   ];
   headerLines.forEach(line => {
@@ -45,26 +46,26 @@ function displayHeader() {
 let wallets = [];
 try {
   wallets = fs.readFileSync('account.txt', 'utf8')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
 } catch (err) {
-  console.error('读取 account.txt 出错:', err.message);
+  console.error('读取 account.txt 时出错:', err.message);
   process.exit(1);
 }
 
 let proxies = [];
 try {
   proxies = fs.readFileSync('proxy.txt', 'utf8')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
 } catch (error) {
-  console.error('读取 proxy.txt 出错:', error.message);
+  console.error('读取 proxy.txt 时出错:', error.message);
 }
 
 if (proxies.length > 0 && proxies.length < wallets.length) {
-  console.error('代理数量少于钱包数量。请提供足够的代理。');
+  console.error('代理的数量少于钱包的数量。请提供足够的代理。');
   process.exit(1);
 }
 
@@ -78,7 +79,7 @@ async function askUseProxy() {
 
   return new Promise((resolve) => {
     function ask() {
-      rl.question('是否使用代理? (y/n): ', (answer) => {
+      rl.question('您想要使用代理吗？ (y/n): ', (answer) => {
         if (answer.toLowerCase() === 'y') {
           resolve(true);
           rl.close();
@@ -86,7 +87,7 @@ async function askUseProxy() {
           resolve(false);
           rl.close();
         } else {
-          console.log('请输入 y 或 n');
+          console.log('请使用 y 或 n 回答。');
           ask();
         }
       });
@@ -95,20 +96,25 @@ async function askUseProxy() {
   });
 }
 
-async function generateTokenForAddress(address, agent) {
-  try {
-    const result = await axios.post(
-      'https://apitn.openledger.xyz/api/v1/auth/generate_token',
-      { address },
-      {
-        headers: { 'Content-Type': 'application/json' },
-        httpsAgent: agent
-      }
-    );
-    return result.data?.data?.token || null;
-  } catch (error) {
-    console.error(`为钱包 ${address} 生成令牌时出错:`, error.message);
-    return null;
+async function generateTokenForAddress(address, agent, delay = 60000) {
+  let attempt = 1;
+  while (true) {
+    try {
+      const result = await axios.post(
+        'https://apitn.openledger.xyz/api/v1/auth/generate_token',
+        { address },
+        {
+          headers: { 'Content-Type': 'application/json' },
+          httpsAgent: agent
+        }
+      );
+      return result.data?.data?.token || null;
+    } catch (error) {
+      console.error(`生成钱包 ${address} 的令牌时出错，尝试次数 ${attempt}:`, error.message);
+      console.log(`将在 ${delay / 1000} 秒后重试生成钱包 ${address} 的令牌...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      attempt++;
+    }
   }
 }
 
@@ -127,7 +133,7 @@ async function getOrCreateWalletData(address, agent) {
   if (!dataStore[address].token) {
     const token = await generateTokenForAddress(address, agent);
     if (!token) {
-      console.log('无法生成令牌，暂时跳过此钱包。');
+      console.log('无法生成令牌。暂时跳过此钱包。');
       return null;
     }
     dataStore[address].token = token;
@@ -144,7 +150,7 @@ async function getOrCreateWalletData(address, agent) {
 async function getAccountID(token, address, index, useProxy, delay = 60000) {
   const proxyUrl = proxies.length > 0 ? proxies[index % proxies.length] : '';
   const agent = useProxy && proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
-  const proxyText = useProxy && proxyUrl ? proxyUrl : '未使用';
+  const proxyText = useProxy && proxyUrl ? proxyUrl : 'False';
 
   let attempt = 1;
   while (true) {
@@ -158,7 +164,7 @@ async function getAccountID(token, address, index, useProxy, delay = 60000) {
       console.log(`\x1b[33m[${index + 1}]\x1b[0m 账户ID \x1b[36m${acctID}\x1b[0m, 代理: \x1b[36m${proxyText}\x1b[0m`);
       return;
     } catch (error) {
-      console.error(`\x1b[33m[${index + 1}]\x1b[0m 获取钱包 ${address} 的账户ID失败，第 ${attempt} 次尝试:`, error.message);
+      console.error(`\x1b[33m[${index + 1}]\x1b[0m 获取钱包 ${address} 的账户ID时出错，尝试次数 ${attempt}:`, error.message);
       console.log(`\x1b[33m[${index + 1}]\x1b[0m ${delay / 1000} 秒后重试...`);
       await new Promise(resolve => setTimeout(resolve, delay));
       attempt++;
@@ -169,7 +175,7 @@ async function getAccountID(token, address, index, useProxy, delay = 60000) {
 async function getAccountDetails(token, address, index, useProxy, retries = 3, delay = 60000) {
   const proxyUrl = proxies.length > 0 ? proxies[index % proxies.length] : '';
   const agent = useProxy && proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
-  const proxyText = useProxy && proxyUrl ? proxyUrl : '未使用';
+  const proxyText = useProxy && proxyUrl ? proxyUrl : 'False';
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -193,19 +199,19 @@ async function getAccountDetails(token, address, index, useProxy, retries = 3, d
       const total = totalHeartbeats + totalPointFromReward;
 
       console.log(
-        `\x1b[33m[${index + 1}]\x1b[0m 钱包 \x1b[36m${address}\x1b[0m, ` +
-        `账户ID \x1b[36m${accountIDs[address]}\x1b[0m, 总心跳数 \x1b[32m${totalHeartbeats}\x1b[0m, ` +
-        `总积分 \x1b[32m${total.toFixed(2)}\x1b[0m (\x1b[33m${epochName}\x1b[0m), ` +
-        `代理: \x1b[36m${proxyText}\x1b[0m`
+          `\x1b[33m[${index + 1}]\x1b[0m 钱包 \x1b[36m${address}\x1b[0m, ` +
+          `账户ID \x1b[36m${accountIDs[address]}\x1b[0m, 总心跳 \x1b[32m${totalHeartbeats}\x1b[0m, ` +
+          `总积分 \x1b[32m${total.toFixed(2)}\x1b[0m (\x1b[33m${epochName}\x1b[0m), ` +
+          `代理: \x1b[36m${proxyText}\x1b[0m`
       );
       return;
     } catch (error) {
-      console.error(`获取钱包 ${address} 账户详情失败，第 ${attempt} 次尝试:`, error.message);
+      console.error(`获取账户详情时出错，钱包地址 ${address}，尝试次数 ${attempt}:`, error.message);
       if (attempt < retries) {
         console.log(`${delay / 1000} 秒后重试...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       } else {
-        console.error('所有重试尝试均失败。');
+        console.error('所有重试尝试均失败，无法获取账户详情。');
       }
     }
   }
@@ -231,19 +237,19 @@ async function checkAndClaimReward(token, address, index, useProxy, retries = 3,
 
         if (claimRewardResponse.data.status === 'SUCCESS') {
           console.log(
-            `\x1b[33m[${index + 1}]\x1b[0m 钱包 \x1b[36m${address}\x1b[0m, ` +
-            `账户ID \x1b[36m${accountIDs[address]}\x1b[0m \x1b[32m每日奖励领取成功!\x1b[0m`
+              `\x1b[33m[${index + 1}]\x1b[0m 钱包 \x1b[36m${address}\x1b[0m, ` +
+              `账户ID \x1b[36m${accountIDs[address]}\x1b[0m \x1b[32m成功领取日常奖励！\x1b[0m`
           );
         }
       }
       return;
     } catch (error) {
-      console.error(`领取钱包 ${address} 奖励失败，第 ${attempt} 次尝试:`, error.message);
+      console.error(`领取钱包 ${address} 的奖励时出错，尝试次数 ${attempt}:`, error.message);
       if (attempt < retries) {
         console.log(`${delay / 1000} 秒后重试...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       } else {
-        console.error('所有领取奖励的重试尝试均失败。');
+        console.error('所有重试尝试均失败，无法领取奖励。');
       }
     }
   }
@@ -288,7 +294,7 @@ function connectWebSocket({ token, workerID, id, address }, index, useProxy) {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
     }
   };
-  const proxyText = useProxy && proxyUrl ? proxyUrl : '未使用';
+  const proxyText = useProxy && proxyUrl ? proxyUrl : 'False';
 
   const ws = new WebSocket(wsUrl, wsOptions);
   let heartbeatInterval;
@@ -316,14 +322,17 @@ function connectWebSocket({ token, workerID, id, address }, index, useProxy) {
       workerType: 'LWEXT',
       workerID
     };
-    // Do not log heartbeat messages
+    console.log(
+        `\x1b[33m[${index + 1}]\x1b[0m 账户ID \x1b[36m${accountIDs[address]}\x1b[0m: ` +
+        `发送心跳包给工作者ID: \x1b[33m${workerID}\x1b[0m, 代理: \x1b[36m${proxyText}\x1b[0m`
+    );
     ws.send(JSON.stringify(heartbeatMessage));
   }
 
   ws.on('open', () => {
     console.log(
-      `\x1b[33m[${index + 1}]\x1b[0m 账户ID \x1b[36m${accountIDs[address]}\x1b[0m: ` +
-      `已连接到WebSocket，工作ID: \x1b[33m${workerID}\x1b[0m, 代理: \x1b[36m${proxyText}\x1b[0m`
+        `\x1b[33m[${index + 1}]\x1b[0m 账户ID \x1b[36m${accountIDs[address]}\x1b[0m: ` +
+        `连接到WebSocket，工作者ID: \x1b[33m${workerID}\x1b[0m, 代理: \x1b[36m${proxyText}\x1b[0m`
     );
 
     const registerMessage = {
@@ -348,31 +357,58 @@ function connectWebSocket({ token, workerID, id, address }, index, useProxy) {
 
   ws.on('message', data => {
     console.log(
-      `\x1b[33m[${index + 1}]\x1b[0m 账户ID \x1b[36m${accountIDs[address]}\x1b[0m: ` +
-      `收到工作ID \x1b[33m${workerID}\x1b[0m 的消息: ${data}, 代理: \x1b[36m${proxyText}\x1b[0m`
+        `\x1b[33m[${index + 1}]\x1b[0m 账户ID \x1b[36m${accountIDs[address]}\x1b[0m: ` +
+        `收到工作者ID \x1b[33m${workerID}\x1b[0m 的消息: ${data}, 代理: \x1b[36m${proxyText}\x1b[0m`
     );
   });
 
   ws.on('error', err => {
     console.error(`\x1b[33m[${index + 1}]\x1b[0m 账户ID \x1b[36m${accountIDs[address]}\x1b[0m: ` +
-      `工作ID \x1b[33m${workerID}\x1b[0m 的WebSocket错误:`, err);
+        `WebSocket错误，工作者ID \x1b[33m${workerID}\x1b[0m:`, err);
   });
 
   ws.on('close', () => {
     console.log(
-      `\x1b[33m[${index + 1}]\x1b[0m 账户ID \x1b[36m${accountIDs[address]}\x1b[0m: ` +
-      `工作ID \x1b[33m${workerID}\x1b[0m 的WebSocket连接已关闭, 代理: \x1b[36m${proxyText}\x1b[0m`
+        `\x1b[33m[${index + 1}]\x1b[0m 账户ID \x1b[36m${accountIDs[address]}\x1b[0m: ` +
+        `WebSocket连接已关闭，工作者ID \x1b[33m${workerID}\x1b[0m, 代理: \x1b[36m${proxyText}\x1b[0m`
     );
     clearInterval(heartbeatInterval);
 
     setTimeout(() => {
       console.log(
-        `\x1b[33m[${index + 1}]\x1b[0m 账户ID \x1b[36m${accountIDs[address]}\x1b[0m: ` +
-        `正在重新连接WebSocket，工作ID: \x1b[33m${workerID}\x1b[0m, 代理: \x1b[36m${proxyText}\x1b[0m`
+          `\x1b[33m[${index + 1}]\x1b[0m 账户ID \x1b[36m${accountIDs[address]}\x1b[0m: ` +
+          `重新连接WebSocket，工作者ID: \x1b[33m${workerID}\x1b[0m, 代理: \x1b[36m${proxyText}\x1b[0m`
       );
       connectWebSocket({ token, workerID, id, address }, index, useProxy);
     }, 30000);
   });
+}
+
+async function claimMedals(token, address, index, useProxy) {
+  const proxyUrl = proxies.length > 0 ? proxies[index % proxies.length] : '';
+  const agent = useProxy && proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
+
+  for (let tierId = 1; tierId <= 8; tierId++) {
+    try {
+      const response = await axios.put(
+        'https://rewardstn.openledger.xyz/api/v1/claim_tier',
+        { tierId },
+        {
+          headers: { 'Authorization': `Bearer ${token}` },
+          httpsAgent: agent
+        }
+      );
+
+      if (response.data.status === 'SUCCESS' && response.data.data === true) {
+        console.log(
+          `\x1b[33m[${index + 1}]\x1b[0m 钱包 \x1b[36m${address}\x1b[0m: ` +
+          `成功领取第 \x1b[32m${tierId}\x1b[0m 级奖章`
+        );
+      }
+    } catch (error) {
+      // 忽略错误，继续尝试其他级别的奖章
+    }
+  }
 }
 
 async function processRequests(useProxy) {
@@ -382,7 +418,7 @@ async function processRequests(useProxy) {
 
     const record = await getOrCreateWalletData(address, agent);
     if (!record || !record.token) {
-      console.log(`跳过钱包 ${address} (缺少令牌)`);
+      console.log(`由于缺少令牌，跳过钱包 ${address}。`);
       return;
     }
 
@@ -392,21 +428,34 @@ async function processRequests(useProxy) {
       return;
     }
 
-    await checkAndClaimReward(record.token, address, index, useProxy);
-
-    getOrAssignResources(address);
-
-    await getAccountDetails(record.token, address, index, useProxy);
-
     connectWebSocket({
       token: record.token,
       workerID: record.workerID,
       id: record.id,
       address
     }, index, useProxy);
+
+    await Promise.all([
+      claimMedals(record.token, address, index, useProxy),
+      checkAndClaimReward(record.token, address, index, useProxy),
+      getAccountDetails(record.token, address, index, useProxy)
+    ]);
+
+    getOrAssignResources(address);
   });
 
   await Promise.all(promises);
+}
+
+async function claimMedalsPeriodically(useProxy) {
+  setInterval(async () => {
+    const promises = wallets.map(async (address, index) => {
+      const { token } = dataStore[address] || {};
+      if (!token) return;
+      await claimMedals(token, address, index, useProxy);
+    });
+    await Promise.all(promises);
+  }, 12 * 60 * 60 * 1000);
 }
 
 async function updateAccountDetailsPeriodically(useProxy) {
@@ -427,4 +476,5 @@ async function updateAccountDetailsPeriodically(useProxy) {
   await checkAndClaimRewardsPeriodically(useProxy);
   await processRequests(useProxy);
   updateAccountDetailsPeriodically(useProxy);
+  claimMedalsPeriodically(useProxy);
 })();
