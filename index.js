@@ -34,7 +34,7 @@ function displayHeader() {
   const width = process.stdout.columns;
   const headerLines = [
     "<|============================================|>",
-    " OpenLedger Bot ",
+    " OpenLedger Bot 自动交互机器人",
     "<|============================================|>"
   ];
   headerLines.forEach(line => {
