@@ -299,5 +299,5 @@ if __name__ == "__main__":
         print(
             f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
             f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-            f"{Fore.RED + Style.BRIGHT}[ 退出 ] 开放账本 - 机器人{Style.RESET_ALL}                                       "
+            f"{Fore.RED + Style.BRIGHT}[ 退出 ] Openledger - 机器人{Style.RESET_ALL}                                       "
         )
