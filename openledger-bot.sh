@@ -48,19 +48,41 @@ function setup_openledger() {
     # 创建或清空 accounts.json 文件
     echo "[]" > accounts.json
     
-    # 提示用户输入账户数量
-    read -p "请输入需要配置的账户数量: " account_count
+    # 提示用户输入账户数量并验证
+    while true; do
+        read -p "请输入需要配置的账户数量（1-1000）: " account_count
+        if [[ "$account_count" =~ ^[0-9]+$ ]] && [ "$account_count" -ge 1 ] && [ "$account_count" -le 1000 ]; then
+            break
+        else
+            echo "输入无效，请输入一个 1 到 1000 之间的正整数。"
+        fi
+    done
     
-    # 循环获取每个账户的信息
+    # 使用临时数组收集账户信息
+    accounts_json="[]"
     for ((i=1; i<=account_count; i++)); do
         echo "正在配置第 $i 个账户:"
         read -p "请输入 Address: " address
         read -p "请输入 Access_Token: " access_token
         
-        # 使用 jq 添加到 JSON 文件
-        jq --arg addr "$address" --arg token "$access_token" \
-           '. += [{"Address": $addr, "Access_Token": $token}]' accounts.json > tmp.json && mv tmp.json accounts.json
+        # 检查输入是否为空
+        if [ -z "$address" ] || [ -z "$access_token" ]; then
+            echo "Address 或 Access_Token 不能为空，请重新输入。"
+            ((i--))
+            continue
+        fi
+        
+        # 将账户信息添加到临时 JSON
+        accounts_json=$(jq --arg addr "$address" --arg token "$access_token" \
+           '. += [{"Address": $addr, "Access_Token": $token}]' <<< "$accounts_json")
     done
+    
+    # 一次性写入 accounts.json
+    echo "$accounts_json" > accounts.json
+    if [ $? -ne 0 ]; then
+        echo "写入 accounts.json 失败，请检查权限或磁盘空间。"
+        exit 1
+    fi
     
     echo "账户信息已保存到 accounts.json"
     echo "当前 accounts.json 内容如下:"
