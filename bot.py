@@ -20,7 +20,6 @@ class OepnLedger:
             "User-Agent": FakeUserAgent().random
         }
         self.proxies = []
-        self.proxy_index = 0
         self.account_proxies = {}
         self.proxy_scheme = "https"  # 默认使用 https，可以改为 "socks5"
 
@@ -54,14 +53,14 @@ class OepnLedger:
         try:
             if not os.path.exists(filename):
                 self.log(f"{Fore.RED}文件 {filename} 未找到。{Style.RESET_ALL}")
-                return
-
+                return []
             with open(filename, 'r') as file:
                 data = json.load(file)
                 if isinstance(data, list):
                     return data
                 return []
         except json.JSONDecodeError:
+            self.log(f"{Fore.RED}文件 {filename} 格式错误。{Style.RESET_ALL}")
             return []
     
     async def load_proxies(self, use_proxy_choice: int):
@@ -88,28 +87,24 @@ class OepnLedger:
 
     def check_proxy_schemes(self, proxy):
         schemes = ["http://", "https://", "socks4://", "socks5://"]
-        # 如果代理已有协议前缀，直接返回
         if any(proxy.startswith(scheme) for scheme in schemes):
             return proxy
-        # 否则使用默认协议（https 或 socks5）
         return f"{self.proxy_scheme}://{proxy}"
 
     def get_next_proxy_for_account(self, account):
-        if account not in self.account_proxies:
-            if not self.proxies:
-                return None
-            proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
-            self.account_proxies[account] = proxy
-            self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
-        return self.account_proxies[account]
-
-    def rotate_proxy_for_account(self, account):
         if not self.proxies:
             return None
-        proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
-        self.account_proxies[account] = proxy
-        self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
-        return proxy
+        # 获取账号在 accounts.json 中的索引
+        accounts = self.load_accounts()
+        for i, acc in enumerate(accounts):
+            if acc["Address"] == account:
+                if i >= len(self.proxies):
+                    self.log(f"{Fore.RED + Style.BRIGHT}账号 {self.mask_account(account)} 没有对应的代理可用！{Style.RESET_ALL}")
+                    return None
+                proxy = self.check_proxy_schemes(self.proxies[i])
+                self.account_proxies[account] = proxy
+                return proxy
+        return None
     
     def generate_register_message(self, address: str, worker_id: str, browser_id: str, msg_type: str):
         register_message = {
@@ -153,16 +148,13 @@ class OepnLedger:
         return heartbeat_message
     
     def generate_browser_id(self):
-        browser_id = str(uuid.uuid4())
-        return browser_id
+        return str(uuid.uuid4())
         
     def generate_worker_id(self, account: str):
-        identity = base64.b64encode(account.encode("utf-8")).decode("utf-8")
-        return identity
+        return base64.b64encode(account.encode("utf-8")).decode("utf-8")
     
     def mask_account(self, account):
-        mask_account = account[:6] + '*' * 6 + account[-6:]
-        return mask_account
+        return account[:6] + '*' * 6 + account[-6:]
 
     def print_message(self, account, proxy, color, message):
         self.log(
@@ -170,7 +162,7 @@ class OepnLedger:
             f"{Fore.WHITE + Style.BRIGHT} {self.mask_account(account)} {Style.RESET_ALL}"
             f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
             f"{Fore.CYAN + Style.BRIGHT} 代理: {Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+            f"{Fore.WHITE + Style.BRIGHT}{proxy if proxy else '无代理'}{Style.RESET_ALL}"
             f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
             f"{Fore.CYAN + Style.BRIGHT}状态:{Style.RESET_ALL}"
             f"{color + Style.BRIGHT} {message} {Style.RESET_ALL}"
@@ -187,9 +179,9 @@ class OepnLedger:
 
                 if choose in [1, 2, 3]:
                     if choose == 2:
-                        self.proxy_scheme = "socks5"  # 设置为 SOCKS5
+                        self.proxy_scheme = "socks5"
                     else:
-                        self.proxy_scheme = "https"  # 设置为 HTTPS
+                        self.proxy_scheme = "https"
                     proxy_type = (
                         "使用私人代理运行 (HTTPS)" if choose == 1 else 
                         "使用私人代理运行 (SOCKS5)" if choose == 2 else 
@@ -218,8 +210,7 @@ class OepnLedger:
                 return response.json()
             except Exception as e:
                 self.print_message(address, proxy, Fore.RED, f"{msg_type} 失败: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
-                proxy = self.rotate_proxy_for_account(address) if use_proxy else None
-                await asyncio.sleep(5)
+                await asyncio.sleep(5)  # 失败后等待5秒重试，不更换代理
         
     async def process_accounts(self, address: str, token: str, use_proxy: bool):
         worker_id = self.generate_worker_id(address)
@@ -227,9 +218,14 @@ class OepnLedger:
         memory = round(random.uniform(0, 32), 2)
         storage = str(round(random.uniform(0, 500), 2))
 
+        # 获取固定的代理
+        proxy = self.get_next_proxy_for_account(address) if use_proxy else None
+        if use_proxy and not proxy:
+            self.log(f"{Fore.RED + Style.BRIGHT}账号 {self.mask_account(address)} 无可用代理，跳过处理。{Style.RESET_ALL}")
+            return
+
         for msg_type in ["REGISTER", "HEARTBEAT"]:
             if msg_type == "REGISTER":
-                proxy = self.get_next_proxy_for_account(address) if use_proxy else None
                 payload = self.generate_register_message(address, worker_id, browser_id, msg_type)
                 register = await self.nodes_communicate(address, token, msg_type, payload, use_proxy, proxy)
                 if register:
@@ -244,7 +240,6 @@ class OepnLedger:
             elif msg_type == "HEARTBEAT":
                 payload = self.generate_heartbeat_message(address, worker_id, msg_type, memory, storage)
                 while True:
-                    proxy = self.get_next_proxy_for_account(address) if use_proxy else None
                     heartbeat = await self.nodes_communicate(address, token, msg_type, payload, use_proxy, proxy)
                     if heartbeat:
                         self.print_message(address, proxy, Fore.GREEN, f"{msg_type} 成功: {Fore.BLUE + Style.BRIGHT}{heartbeat}")
@@ -260,14 +255,11 @@ class OepnLedger:
         try:
             accounts = self.load_accounts()
             if not accounts:
-                self.log(f"{Fore.RED+Style.BRIGHT}未加载任何账户。{Style.RESET_ALL}")
+                self.log(f"{Fore.RED + Style.BRIGHT}未加载任何账户。{Style.RESET_ALL}")
                 return
             
             use_proxy_choice = self.print_question()
-
-            use_proxy = False
-            if use_proxy_choice in [1, 2]:
-                use_proxy = True
+            use_proxy = use_proxy_choice in [1, 2]
 
             self.clear_terminal()
             self.welcome()
@@ -278,8 +270,10 @@ class OepnLedger:
 
             if use_proxy:
                 await self.load_proxies(use_proxy_choice)
+                if len(self.proxies) < len(accounts):
+                    self.log(f"{Fore.YELLOW + Style.BRIGHT}警告：代理数量 ({len(self.proxies)}) 小于账户数量 ({len(accounts)})，多余账户将被忽略。{Style.RESET_ALL}")
 
-            self.log(f"{Fore.CYAN + Style.BRIGHT}-{Style.RESET_ALL}"*75)
+            self.log(f"{Fore.CYAN + Style.BRIGHT}-{Style.RESET_ALL}" * 75)
 
             while True:
                 tasks = []
@@ -294,7 +288,7 @@ class OepnLedger:
                 await asyncio.sleep(10)
 
         except Exception as e:
-            self.log(f"{Fore.RED+Style.BRIGHT}错误: {e}{Style.RESET_ALL}")
+            self.log(f"{Fore.RED + Style.BRIGHT}错误: {e}{Style.RESET_ALL}")
             raise e
 
 if __name__ == "__main__":
@@ -305,5 +299,5 @@ if __name__ == "__main__":
         print(
             f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
             f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-            f"{Fore.RED + Style.BRIGHT}[ 退出 ] 开放账本 - 机器人{Style.RESET_ALL}                                       "                              
+            f"{Fore.RED + Style.BRIGHT}[ 退出 ] 开放账本 - 机器人{Style.RESET_ALL}                                       "
         )
