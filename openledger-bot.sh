@@ -64,17 +64,18 @@ function setup_openledger() {
         echo "正在配置第 $i 个账户:"
         read -p "请输入 Address: " address
         read -p "请输入 Access_Token: " access_token
+        read -p "请输入 Private_Key: " private_key
         
         # 检查输入是否为空
-        if [ -z "$address" ] || [ -z "$access_token" ]; then
-            echo "Address 或 Access_Token 不能为空，请重新输入。"
+        if [ -z "$address" ] || [ -z "$access_token" ] || [ -z "$private_key" ]; then
+            echo "Address、Access_Token 或 Private_Key 不能为空，请重新输入。"
             ((i--))
             continue
         fi
         
         # 将账户信息添加到临时 JSON
-        accounts_json=$(jq --arg addr "$address" --arg token "$access_token" \
-           '. += [{"Address": $addr, "Access_Token": $token}]' <<< "$accounts_json")
+        accounts_json=$(jq --arg addr "$address" --arg token "$access_token" --arg pkey "$private_key" \
+           '. += [{"Address": $addr, "Access_Token": $token, "Private_Key": $pkey}]' <<< "$accounts_json")
     done
     
     # 一次性写入 accounts.json
