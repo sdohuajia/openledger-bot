@@ -1,5 +1,9 @@
 aiohttp
 aiohttp-socks
+curl-cffi
 fake-useragent
 colorama
 pytz
+web3
+eth-account
+requests
