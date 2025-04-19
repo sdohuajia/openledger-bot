@@ -3,6 +3,10 @@ from fake_useragent import FakeUserAgent
 from datetime import datetime
 from colorama import *
 import asyncio, random, base64, uuid, json, os, pytz
+from web3 import Web3
+from eth_account import Account
+import hashlib
+import urllib.parse
 
 wib = pytz.timezone('Asia/Jakarta')
 
@@ -10,7 +14,7 @@ class OepnLedger:
     def __init__(self) -> None:
         self.extension_id = "chrome-extension://ekbbplmjjgoobhdlffmgeokalelnmjjc"
         self.headers = {
-            "Accept": "/",
+            "Accept": "*/*",
             "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
             "Origin": self.extension_id,
             "Sec-Fetch-Dest": "empty",
@@ -36,7 +40,7 @@ class OepnLedger:
     def welcome(self):
         print(
             f"""
-    {Fore.GREEN + Style.BRIGHT}自动Ping {Fore.BLUE + Style.BRIGHT}Openledger - 机器人
+    {Fore.GREEN + Style.BRIGHT}自动Ping与奖励领取 {Fore.BLUE + Style.BRIGHT}Openledger - 机器人
         """
             f"""
     {Fore.GREEN + Style.BRIGHT}Rey? {Fore.YELLOW + Style.BRIGHT}<这是测试>
@@ -193,6 +197,137 @@ class OepnLedger:
             except ValueError:
                 print(f"{Fore.RED + Style.BRIGHT}无效输入。请输入一个数字（1、2或3）。{Style.RESET_ALL}")
 
+    async def get_private_key(self, address):
+        accounts = self.load_accounts()
+        for acc in accounts:
+            if acc["Address"].lower() == address.lower():
+                try:
+                    private_key = acc["Private_Key"]
+                    if len(private_key) == 64 and all(c in "0123456789abcdefABCDEF" for c in private_key):
+                        formatted_key = "0x" + private_key
+                        account = Account.from_key(formatted_key)
+                        if account.address.lower() == address.lower():
+                            self.print_message(address, '', Fore.GREEN, "找到有效私钥")
+                            return formatted_key
+                    self.log(f"{Fore.RED}账户 {self.mask_account(address)} 的私钥格式无效{Style.RESET_ALL}")
+                    return None
+                except Exception as e:
+                    self.log(f"{Fore.RED}处理私钥时出错: {e}{Style.RESET_ALL}")
+                    return None
+        self.log(f"{Fore.RED}未找到账户 {self.mask_account(address)} 的私钥{Style.RESET_ALL}")
+        return None
+
+    async def checkin_details(self, address: str, token: str, use_proxy: bool, proxy=None):
+        url = "https://rewardstn.openledger.xyz/ext/api/v2/claim_details"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+        try:
+            response = await asyncio.to_thread(
+                requests.get, url=url, headers=headers, proxy=proxy if use_proxy else None,
+                timeout=60, impersonate="safari15_5", verify=False
+            )
+            response.raise_for_status()
+            return response.json()['data']
+        except Exception as e:
+            self.print_message(address, proxy, Fore.RED, f"获取每日签到数据失败: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
+            return None
+
+    async def claim_checkin_reward(self, address: str, token: str, use_proxy: bool, proxy=None, checkin_data=None):
+        if not checkin_data or checkin_data.get('claimed', True):
+            self.print_message(address, proxy, Fore.YELLOW, "每日签到奖励已领取或数据缺失")
+            return {'claimed': True}
+
+        private_key = await self.get_private_key(address)
+        if not private_key:
+            self.print_message(address, proxy, Fore.RED, "未找到有效私钥")
+            return None
+
+        try:
+            session = requests.Session()
+            if use_proxy and proxy:
+                session.proxies = {'http': proxy, 'https': proxy}
+
+            w3 = Web3(Web3.HTTPProvider("https://rpctn.openledger.xyz/", session=session))
+            chain_id = w3.eth.chain_id
+            nonce = w3.eth.get_transaction_count(Web3.to_checksum_address(address))
+            gas_price = w3.eth.gas_price
+            contract_address = "0x5d2cd1059b67ed3ae2d153149c8cedceb3344b9b"
+
+            reward_point = int(checkin_data.get('dailyPoint', 10))
+            server_signature = checkin_data.get('signature')
+            salt = int(checkin_data.get('salt', 0))
+
+            sig = server_signature[2:] if server_signature.startswith('0x') else server_signature
+            v = int(sig[-2:], 16) + 27 if int(sig[-2:], 16) < 27 else int(sig[-2:], 16)
+            r_hex = sig[:64]
+            s_hex = sig[64:128]
+
+            data = "0x8aca7c1a" + \
+                   hex(reward_point)[2:].zfill(64) + \
+                   hex(salt)[2:].zfill(64) + \
+                   hex(v)[2:].zfill(64) + r_hex + s_hex
+
+            tx_params = {
+                'chainId': chain_id,
+                'nonce': nonce,
+                'gasPrice': gas_price,
+                'gas': 300000,
+                'to': Web3.to_checksum_address(contract_address),
+                'value': 0,
+                'data': data,
+                'accessList': []
+            }
+
+            account = Account.from_key(private_key)
+            signed_tx = account.sign_transaction(tx_params)
+            signed_tx_hex = signed_tx.rawTransaction.hex()
+
+            claim_url = "https://rewardstn.openledger.xyz/ext/api/v2/claim_reward"
+            headers = {**self.headers, "Authorization": f"Bearer {token}"}
+            payload = {"signedTx": signed_tx_hex}
+
+            response = await asyncio.to_thread(
+                requests.post, url=claim_url, headers=headers, json=payload,
+                proxy=proxy if use_proxy else None, timeout=60, impersonate="safari15_5", verify=False
+            )
+            response_data = response.json()
+            if response.status_code == 200 and response_data.get('status') == 'SUCCESS':
+                self.print_message(address, proxy, Fore.GREEN, f"成功领取奖励: {reward_point} PTS")
+                return {'claimed': True}
+            else:
+                self.print_message(address, proxy, Fore.RED, f"领取奖励失败: {response_data.get('message')}")
+                return None
+        except Exception as e:
+            self.print_message(address, proxy, Fore.RED, f"领取每日签到奖励失败: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
+            return None
+
+    async def process_claim_checkin_reward(self, address: str, token: str, use_proxy: bool):
+        while True:
+            proxy = self.get_next_proxy_for_account(address) if use_proxy else None
+            if use_proxy and not proxy:
+                self.log(f"{Fore.RED + Style.BRIGHT}账号 {self.mask_account(address)} 无可用代理，跳过奖励领取。{Style.RESET_ALL}")
+                return
+
+            checkin = await self.checkin_details(address, token, use_proxy, proxy)
+            if checkin:
+                if not checkin['claimed']:
+                    result = await self.claim_checkin_reward(address, token, use_proxy, proxy, checkin)
+                    if result and result.get('claimed'):
+                        self.print_message(address, proxy, Fore.GREEN,
+                            f"每日签到奖励已领取 "
+                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT} 奖励: {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}{checkin['dailyPoint']} PTS{Style.RESET_ALL}"
+                        )
+                    else:
+                        self.print_message(address, proxy, Fore.RED, "每日签到奖励未领取")
+                else:
+                    self.print_message(address, proxy, Fore.YELLOW, "每日签到奖励已领取")
+            await asyncio.sleep(24 * 60 * 60)
+
     async def nodes_communicate(self, address: str, token: str, msg_type: str, payload: dict, use_proxy: bool, proxy=None):
         url = "https://apitn.openledger.xyz/ext/api/v2/nodes/communicate"
         data = json.dumps(payload)
@@ -204,13 +339,16 @@ class OepnLedger:
         }
         while True:
             try:
-                response = await asyncio.to_thread(requests.post, url=url, headers=headers, data=data, proxy=proxy, timeout=60, impersonate="safari15_5")
+                response = await asyncio.to_thread(
+                    requests.post, url=url, headers=headers, data=data, proxy=proxy if use_proxy else None,
+                    timeout=60, impersonate="safari15_5", verify=False
+                )
                 response.raise_for_status()
                 return response.json()
             except Exception as e:
                 self.print_message(address, proxy, Fore.RED, f"{msg_type} 失败: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
                 await asyncio.sleep(5)
-    
+
     async def process_accounts(self, address: str, token: str, use_proxy: bool):
         worker_id = self.generate_worker_id(address)
         browser_id = self.generate_browser_id()
@@ -281,6 +419,7 @@ class OepnLedger:
                         token = account["Access_Token"]
                         if address and token:
                             tasks.append(asyncio.create_task(self.process_accounts(address, token, use_proxy)))
+                            tasks.append(asyncio.create_task(self.process_claim_checkin_reward(address, token, use_proxy)))
 
                 await asyncio.gather(*tasks)
                 await asyncio.sleep(10)
